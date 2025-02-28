@@ -10,7 +10,7 @@ from langchain.schema import HumanMessage, SystemMessage
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 from langchain.prompts import PromptTemplate
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -225,4 +225,10 @@ def get_answer(query):
     return qa_chain.run(formatted_prompt)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=8080)  # Use socketio.run instead of app.run
+    socketio.run(
+        app, 
+        debug=True,
+        host="0.0.0.0",
+        port=8080,
+        allow_unsafe_werkzeug=True
+    )
