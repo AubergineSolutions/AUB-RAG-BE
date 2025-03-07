@@ -167,3 +167,4 @@ zstandard==0.23.0
 gunicorn==21.2.0
 eventlet==0.35.2
 langchain-openai==0.3.7
+langchain-chroma==0.2.2
