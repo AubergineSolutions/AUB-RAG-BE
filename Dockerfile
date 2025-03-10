@@ -24,8 +24,25 @@ RUN mkdir -p uploads
 # Create directory for Chroma DB
 RUN mkdir -p chroma_db
 
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=run.py
+ENV FLASK_ENV=production
+ENV FLASK_DEBUG=0
+
 # Expose port 8080 for the Flask application
 EXPOSE 8080
 
+# Create a script to run the application
+RUN echo '#!/bin/bash\n\
+echo "Starting application..."\n\
+echo "OPENAI_API_KEY status: ${OPENAI_API_KEY:+available}${OPENAI_API_KEY:-missing}"\n\
+echo "FLASK_APP: ${FLASK_APP}"\n\
+echo "FLASK_ENV: ${FLASK_ENV}"\n\
+echo "FLASK_DEBUG: ${FLASK_DEBUG}"\n\
+echo "PYTHONUNBUFFERED: ${PYTHONUNBUFFERED}"\n\
+exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8080 --log-level debug run:app\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
 # Command to run the application with gunicorn
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:8080", "app:app"]    
+CMD ["/app/start.sh"]
