@@ -43,7 +43,7 @@ def get_answer(query):
         
         # Initialize LLM
         logger.info("Initializing LLM")
-        llm = ChatOpenAI(model_name="gpt-4", api_key=api_key)
+        llm = ChatOpenAI(model_name="gpt-4o", api_key=api_key)
         
         # Create QA chain
         logger.info("Creating QA chain")

@@ -74,10 +74,7 @@ def get_file_metadata(stored_filename):
             "file_size": file_stats.st_size,
             "creation_date": creation_time.strftime("%Y-%m-%d"),
             "creation_time": creation_time.strftime("%H:%M:%S"),
-            "modification_date": modification_time.strftime("%Y-%m-%d"),
-            "modification_time": modification_time.strftime("%H:%M:%S"),
             "timestamp": modification_time.timestamp(),
-            "file_path": file_path,
             "doc_id": stored_filename.rsplit('.', 1)[0].split('_')[-1] if '_' in stored_filename else ""
         }
         
