@@ -1,6 +1,8 @@
 import os
 import uuid
 import datetime
+import zipfile
+import tempfile
 from flask import Blueprint, request, jsonify, send_from_directory
 from .services.file_processing import process_file
 from .utils.helpers import get_uploaded_files, get_file_metadata, format_file_size
@@ -33,39 +35,53 @@ def upload_file():
 
     for file in files:
         if file and allowed_file(file.filename):
-            # Generate a unique filename to prevent overwriting
             original_filename = file.filename
-            file_extension = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
-            base_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else original_filename
-            
-            # Create a filename with format: original_name_uuid.extension
-            unique_id = uuid.uuid4().hex[:8]  # Use shorter UUID for readability
-            unique_filename = f"{base_name}_{unique_id}.{file_extension}" if file_extension else f"{base_name}_{unique_id}"
-            
-            filepath = os.path.join(Config.UPLOAD_FOLDER, unique_filename)
-            file.save(filepath)
-            
-            # Get file size
-            file_size = os.path.getsize(filepath)
-            
-            # Get current timestamp
-            upload_time = datetime.datetime.now()
-            
-            # Create metadata
-            metadata = {
-                "original_filename": original_filename,
-                "stored_filename": unique_filename,
-                "file_extension": file_extension,
-                "file_size": file_size,
-                "formatted_file_size": format_file_size(file_size),
-                "upload_date": upload_time.strftime("%Y-%m-%d"),
-                "upload_time": upload_time.strftime("%H:%M:%S"),
-                "timestamp": upload_time.timestamp(),
-                "file_path": filepath,
-                "doc_id": unique_id  # For compatibility with vectorstore metadata
-            }
-            uploaded_files.append(filepath)
-            file_metadata.append(metadata)
+            file_extension = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''            
+            if file_extension == 'zip':
+                # Handle zip file
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    zip_path = os.path.join(temp_dir, original_filename)
+                    file.save(zip_path)
+                    
+                    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                        zip_ref.extractall(temp_dir)
+                    
+                    # Process each file in the extracted directory
+                    for root, _, extracted_files in os.walk(temp_dir):
+                        for extracted_file in extracted_files:
+                            extracted_file_path = os.path.join(root, extracted_file)
+                            # Process each extracted file
+                            process_extracted_file(extracted_file_path, uploaded_files, file_metadata)
+            else:
+                # Generate a unique filename to prevent overwriting
+                base_name = original_filename.rsplit('.', 1)[0]
+                unique_id = uuid.uuid4().hex[:8]  # Use shorter UUID for readability
+                unique_filename = f"{base_name}_{unique_id}.{file_extension}"
+                
+                filepath = os.path.join(Config.UPLOAD_FOLDER, unique_filename)
+                file.save(filepath)
+                
+                # Get file size
+                file_size = os.path.getsize(filepath)
+                
+                # Get current timestamp
+                upload_time = datetime.datetime.now()
+                
+                # Create metadata
+                metadata = {
+                    "original_filename": original_filename,
+                    "stored_filename": unique_filename,
+                    "file_extension": file_extension,
+                    "file_size": file_size,
+                    "formatted_file_size": format_file_size(file_size),
+                    "upload_date": upload_time.strftime("%Y-%m-%d"),
+                    "upload_time": upload_time.strftime("%H:%M:%S"),
+                    "timestamp": upload_time.timestamp(),
+                    "file_path": filepath,
+                    "doc_id": unique_id  # For compatibility with vectorstore metadata
+                }
+                uploaded_files.append(filepath)
+                file_metadata.append(metadata)
         else:
             return jsonify({"error": f"Unsupported file type for {file.filename}. Allowed types: {', '.join(allowed_extensions)}"}), 403
 
@@ -79,6 +95,44 @@ def upload_file():
     except Exception as e:
         print(f"Error processing files: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+def process_extracted_file(file_path, uploaded_files, file_metadata):
+    # Determine the file extension
+    file_extension = file_path.rsplit('.', 1)[1].lower() if '.' in file_path else ''
+    # Check if the file is of an allowed type
+    if file_extension in Config.ALLOWED_EXTENSIONS:
+        # Generate a unique filename
+        base_name = os.path.basename(file_path).rsplit('.', 1)[0]
+        unique_id = uuid.uuid4().hex[:8]
+        unique_filename = f"{base_name}_{unique_id}.{file_extension}"
+        
+        # Move the file to the upload directory
+        final_path = os.path.join(Config.UPLOAD_FOLDER, unique_filename)
+        os.rename(file_path, final_path)
+        
+        # Get file size
+        file_size = os.path.getsize(final_path)
+        
+        # Get current timestamp
+        upload_time = datetime.datetime.now()
+        
+        # Create metadata
+        metadata = {
+            "original_filename": os.path.basename(file_path),
+            "stored_filename": unique_filename,
+            "file_extension": file_extension,
+            "file_size": file_size,
+            "formatted_file_size": format_file_size(file_size),
+            "upload_date": upload_time.strftime("%Y-%m-%d"),
+            "upload_time": upload_time.strftime("%H:%M:%S"),
+            "timestamp": upload_time.timestamp(),
+            "file_path": final_path,
+            "doc_id": unique_id
+        }
+        
+        uploaded_files.append(final_path)
+        file_metadata.append(metadata)
 
 
 @main.route("/files", methods=["GET"])

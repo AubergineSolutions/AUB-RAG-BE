@@ -12,7 +12,7 @@ class Config:
     # File storage settings
     UPLOAD_FOLDER = os.path.abspath("./uploads")
     MAX_CONTENT_LENGTH = 20 * 1024 * 1024  # 20 MB max file size
-    ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv'}
+    ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv', 'docx', 'doc', 'zip'}
     
     # Vector database settings
     VECTORSTORE_PATH = os.path.abspath("./chroma_db")

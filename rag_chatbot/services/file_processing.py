@@ -1,6 +1,6 @@
 import os.path
 import uuid
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, CSVLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, CSVLoader, UnstructuredWordDocumentLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma.vectorstores import Chroma
@@ -11,6 +11,8 @@ def get_document_loader(file_path):
         return PyPDFLoader(file_path)
     elif file_path.endswith('.txt'):
         return TextLoader(file_path)
+    elif file_path.endswith('.docx' or '.doc'):
+        return UnstructuredWordDocumentLoader(file_path)
     elif file_path.endswith('.csv'):
         return CSVLoader(file_path)
     else:
