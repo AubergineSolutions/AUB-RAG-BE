@@ -28,7 +28,7 @@ def process_file(file_paths, file_metadata=None):
         list: List of document IDs added to the vector store
     """
     embeddings = OpenAIEmbeddings(api_key=Config.OPENAI_API_KEY)
-    text_splitter = CharacterTextSplitter(chunk_size=3000, chunk_overlap=200)
+    text_splitter = CharacterTextSplitter(chunk_size=Config.CHUNK_SIZE, chunk_overlap=Config.CHUNK_OVERLAP)
     added_doc_ids = []
 
     # Initialize or load existing vector store

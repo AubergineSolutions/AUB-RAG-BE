@@ -1,6 +1,7 @@
 import os
 import uuid
 import datetime
+import logging
 from flask import Blueprint, request, jsonify, send_from_directory
 from .services.file_processing import process_file
 from .utils.helpers import get_uploaded_files, get_file_metadata, format_file_size
@@ -9,6 +10,8 @@ from .services.vectorstore import get_vectorstore
 
 main = Blueprint("main", __name__)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @main.route("/upload", methods=["POST"])
 def upload_file():
@@ -222,83 +225,90 @@ def get_file(filename):
     return jsonify({"error": "File not found"}), 404
 
 
-@main.route("/files/<filename>", methods=["DELETE"])
-def delete_file(filename):
+@main.route("/files", methods=["DELETE"])
+def delete_file():
     """API to delete a file and its embeddings"""
     try:
+        filenames = request.json.get("filenames", [])
+        if not filenames:
+            return jsonify({"error": "No filenames provided for deletion"}), 400
+
         upload_folder = os.path.abspath(Config.UPLOAD_FOLDER)
-        file_path = os.path.join(upload_folder, filename)
-        
-        # Initialize variables to track deletion
-        file_deleted = False
-        embeddings_deleted = False
-        doc_id = None
-        stored_filename = None
-        
-        # Get vectorstore
+        results = {"deleted": 0, "not_found": 0, "errors": 0}
+
         vectorstore = get_vectorstore()
         if not vectorstore:
             return jsonify({"error": "Vectorstore not available"}), 500
-        
-        # Check if the file exists directly
-        if os.path.exists(file_path):
-            stored_filename = filename
-            # Get metadata to find doc_id
-            metadata = get_file_metadata(filename)
-            if metadata and "doc_id" in metadata:
-                doc_id = metadata["doc_id"]
-            
-            # Delete the physical file
-            os.remove(file_path)
-            file_deleted = True
-        else:
-            # Try to find by original filename in vectorstore
-            all_docs = vectorstore.get(include=["metadatas"])
-            
-            if all_docs and "metadatas" in all_docs:
-                # Try to find by original_filename or source
-                for metadata in all_docs["metadatas"]:
-                    if (metadata.get("original_filename") == filename or 
-                        metadata.get("stored_filename") == filename or
-                        metadata.get("source") == filename):
-                        
-                        # Found the file, use stored_filename
+
+        # Retrieve all metadata in a single query
+        all_docs = vectorstore.get(include=["metadatas"])
+        metadata_map = {m.get("stored_filename", m.get("original_filename")): m for m in all_docs.get("metadatas", [])}
+
+        delete_queries = []
+        for filename in filenames:
+            try:
+                file_path = os.path.join(upload_folder, filename)
+                file_deleted = False
+                embeddings_deleted = False
+                doc_id = None
+
+                # Check if file exists directly
+                if os.path.exists(file_path):
+                    metadata = get_file_metadata(filename)
+                    doc_id = metadata.get("doc_id") if metadata else None
+
+                    os.remove(file_path)
+                    file_deleted = True
+
+                else:
+                    # Find metadata in vectorstore
+                    metadata = metadata_map.get(filename)
+                    if metadata:
                         stored_filename = metadata.get("stored_filename")
                         doc_id = metadata.get("doc_id")
-                        
+
                         if stored_filename:
-                            file_path = os.path.join(upload_folder, stored_filename)
-                            if os.path.exists(file_path):
-                                # Delete the physical file
-                                os.remove(file_path)
+                            stored_file_path = os.path.join(upload_folder, stored_filename)
+                            if os.path.exists(stored_file_path):
+                                os.remove(stored_file_path)
                                 file_deleted = True
-                        break
-        
-        # Delete from vectorstore if doc_id is available
-        if doc_id:
-            # Delete all chunks with this doc_id
-            vectorstore.delete(where={"doc_id": doc_id})
-            embeddings_deleted = True
-        
-        # If we found a filename but no doc_id, try to delete by source or filename
-        if stored_filename and not embeddings_deleted:
-            # Try deleting by source field
-            vectorstore.delete(where={"source": filename})
-            vectorstore.delete(where={"source": stored_filename})
-            
-            # Also try by original_filename
-            vectorstore.delete(where={"original_filename": filename})
-            vectorstore.delete(where={"stored_filename": stored_filename})
-            
-            embeddings_deleted = True
-        
-        if file_deleted or embeddings_deleted:
-            return jsonify({
-                "message": f"File {filename} processed: file_deleted={file_deleted}, embeddings_deleted={embeddings_deleted}"
-            }), 200
-        else:
-            return jsonify({"error": "File not found and no embeddings deleted"}), 404
-            
+
+                # Prepare batch deletion queries
+                if doc_id:
+                    delete_queries.append({"doc_id": doc_id})
+                    embeddings_deleted = True
+                elif filename in metadata_map:
+                    delete_queries.extend([
+                        {"source": filename},
+                        {"original_filename": filename},
+                        {"stored_filename": metadata_map[filename].get("stored_filename")},
+                    ])
+                    embeddings_deleted = True
+
+                if file_deleted or embeddings_deleted:
+                    results["deleted"] += 1
+                else:
+                    results["not_found"] += 1
+
+            except Exception as e:
+                logger.error(f"Error processing {filename}: {str(e)}")
+                results["errors"] += 1
+
+        # Batch delete embeddings
+        for query in delete_queries:
+            vectorstore.delete(where=query)
+
+        # Construct response message
+        messages = []
+        if results['deleted']:
+            messages.append(f"Successfully deleted {results['deleted']} file(s).")
+        if results['not_found']:
+            messages.append(f"{results['not_found']} file(s) were not found.")
+        if results['errors']:
+            messages.append(f"Encountered {results['errors']} error(s) during deletion.")
+
+        return jsonify({"message": " ".join(messages) or "No files were processed."}), 200
+
     except Exception as e:
-        print(f"Error deleting file: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Unexpected error in delete_files: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred."}), 500
