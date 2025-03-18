@@ -1,25 +1,54 @@
-from langchain.prompts import PromptTemplate
 from ..services.vectorstore import get_vectorstore
 from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
 from ..config import Config
 import logging
 import os
+from langchain.schema import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains import create_retrieval_chain, create_history_aware_retriever
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-prompt_template = PromptTemplate(
-    input_variables=["context", "question"],
-    template='''\n    You are an AI assistant. Answer based on the context provided.\n    \n    {context}\n    ---\n    User Query: {question}\n    ''')
+contextualize_q_system_prompt = """Given a chat history and the latest user question \
+which might reference context in the chat history, formulate a standalone question \
+which can be understood without the chat history. Do NOT answer the question, \
+just reformulate it if needed and otherwise return it as is."""
+contextualize_q_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", contextualize_q_system_prompt),
+        MessagesPlaceholder("chat_history"),
+        ("human", "{input}"),
+    ]
+)
 
-def get_answer(query):
+
+def format_chat_history(messages):
+    """
+    Convert chat history messages into a formatted string.
+    
+    Args:
+        messages (list): List of HumanMessage and AIMessage objects.
+        
+    Returns:
+        str: Formatted chat history.
+    """
+    formatted_history = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            formatted_history.append(f"User: {msg.content}")
+        elif isinstance(msg, AIMessage):
+            formatted_history.append(f"AI: {msg.content}")
+    return "\n".join(formatted_history)
+
+def get_answer(question, chat_history):
     """
     Get an answer to a query using the RAG system
     
     Args:
-        query (str): The user's query
+        question (str): The user's query
         
     Returns:
         dict: A dictionary containing the answer and sources
@@ -39,28 +68,49 @@ def get_answer(query):
         
         # Create retriever
         logger.info("Creating retriever")
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})        
         
         # Initialize LLM
         logger.info("Initializing LLM")
-        llm = ChatOpenAI(model_name="gpt-4", api_key=api_key)
+        llm = ChatOpenAI(model_name="gpt-4o", api_key=api_key)
         
-        # Create QA chain
-        logger.info("Creating QA chain")
-        qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever, return_source_documents=True)
+        history_aware_retriever = create_history_aware_retriever(
+            llm, retriever, contextualize_q_prompt
+        )
         
-        # Get response
-        logger.info(f"Getting answer for query: {query}")
-        response = qa_chain.invoke({"query": query})
+        # Create QA chain with memory
+        logger.info("Creating QA chain with memory")        
         
+        qa_system_prompt = """You are an assistant for question-answering tasks. \
+        Use the following pieces of retrieved context to answer the question. \
+        If you don't know the answer, just say that you don't know. \
+        Use three sentences maximum and keep the answer concise.\
+
+        {context}"""
+        qa_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", qa_system_prompt),
+                MessagesPlaceholder("chat_history"),
+                ("human", "{input}"),
+            ]
+        )
+        
+        question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+        
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+        response = rag_chain.invoke({"input": question, "chat_history": chat_history})
+                
         # Extract answer and sources
-        answer = response["result"]
-        sources = [doc.metadata["source"] for doc in response["source_documents"]]
+        answer = response["answer"]
         
         logger.info(f"Answer: {answer}")
-        logger.info(f"Sources: {sources}")
         
-        return {"answer": answer, "sources": sources}
+        return {
+            "answer": answer,
+            "query": question,
+            "chat_history": chat_history
+        }
     except Exception as e:
         logger.error(f"Error getting answer: {str(e)}")
         raise
