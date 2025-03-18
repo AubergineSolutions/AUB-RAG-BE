@@ -6,8 +6,8 @@ from .services.chat import get_answer
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 def configure_websocket(socketio):
+    chat_history = []
     @socketio.on('initialize_chat', namespace='/chat')
     def handle_initialize_chat(data):
         """
@@ -42,12 +42,12 @@ def configure_websocket(socketio):
         try:
             # Get response using RAG
             logger.info("Getting answer")
-            response = get_answer(user_message)
+            response = get_answer(user_message, chat_history)
+            chat_history.append({"role": "user", "content": user_message})
+            chat_history.append({"role": "assistant", "content": response["answer"]})
             logger.info(f"Answer received: {response['answer'][:50]}...")
-            
             emit('receive_message', {
                 'message': response['answer'],
-                'sources': response['sources']
             }, broadcast=True)
             logger.info("Response sent to client")
         except Exception as e:
