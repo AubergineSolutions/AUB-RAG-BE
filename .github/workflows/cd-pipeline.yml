@@ -1,0 +1,42 @@
+name: RAG Backend CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - deployment-iris-rag-be
+permissions: write-all
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: deployment-iris-rag-be
+
+      - name: Setup environment variables
+        run: |
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+
+      - name: Add SSH Known Hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ vars.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            echo "Starting deployment..."
+            cd iris-rag-backend/AUB-RAG-BE
+            git pull
+            git checkout deployment-iris-rag-be  # Ensure the correct branch  
+            sudo docker-compose down
+            sudo docker rmi $(docker images -q aub-rag-be-web) || true
+            sudo docker-compose up --build -d
+            echo "Deployment complete."
