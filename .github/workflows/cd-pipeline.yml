@@ -19,11 +19,6 @@ jobs:
         run: |
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
 
-      - name: Add SSH Known Hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H 54.68.230.234 >> ~/.ssh/known_hosts
-
       - name: Deploy to Production
         uses: appleboy/ssh-action@master
         with:
