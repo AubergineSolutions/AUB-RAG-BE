@@ -36,7 +36,7 @@ def configure_websocket(socketio):
         if vectorstore is None:
             error_msg = "Error: Vectorstore not initialized."
             logger.error(error_msg)
-            emit('receive_message', {'message': error_msg}, broadcast=True)
+            emit('receive_message', {'error': error_msg}, broadcast=True)
             return
         
         try:
@@ -53,4 +53,4 @@ def configure_websocket(socketio):
         except Exception as e:
             error_msg = f"Error processing your request: {str(e)}"
             logger.error(f"Error in handle_send_message: {str(e)}")
-            emit('receive_message', {'message': error_msg}, broadcast=True)
+            emit('receive_message', {'error': error_msg}, broadcast=True)
