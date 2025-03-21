@@ -22,13 +22,16 @@ jobs:
 
       - name: Setup SSH Key
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-          ls -lah ~/.ssh  # Check if keys exist
-          cat ~/.ssh/known_hosts  # Debugging step
+         mkdir -p /home/ubuntu/.ssh
+         echo "${{ secrets.SSH_PRIVATE_KEY }}" > /home/ubuntu/.ssh/id_rsa
+         chmod 600 /home/ubuntu/.ssh/id_rsa
+         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> /home/ubuntu/.ssh/known_hosts
+         chmod 644 /home/ubuntu/.ssh/known_hosts
+         ls -lah /home/ubuntu/.ssh  # Debugging: check if the folder and files exist
+         cat /home/ubuntu/.ssh/known_hosts
+         env:
+         HOME: /home/ubuntu  # Ensure the runner knows where the home directory is
+
 
       - name: Debug - Test SSH Connection
         run: |
@@ -37,16 +40,17 @@ jobs:
       - name: Deploy to Production
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            echo "Starting deployment..."
-            cd iris-rag-backend/AUB-RAG-BE
-            git pull
-            git checkout deployment-iris-rag-be  # Ensure correct branch  
-            sudo docker-compose down
-            sudo docker rmi $(docker images -q aub-rag-be-web) || true
-            sudo docker-compose up --build -d
-            echo "Deployment complete."
+         host: ${{ secrets.EC2_HOST }}
+         username: ${{ secrets.EC2_USER }}
+         key: /home/ubuntu/.ssh/id_rsa
+         script: |
+          set -e
+          echo "Starting deployment..."
+          cd iris-rag-backend/AUB-RAG-BE
+          git pull
+          git checkout deployment-iris-rag-be
+          sudo docker-compose down
+          sudo docker rmi $(docker images -q aub-rag-be-web) || true
+          sudo docker-compose up --build -d
+          echo "Deployment complete."
+
