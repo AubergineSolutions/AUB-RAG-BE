@@ -16,20 +16,23 @@ jobs:
         with:
           ref: deployment-iris-rag-be
 
-      - name: Setup SSH Key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Debug - Print EC2 Host
+        run: |
+          echo "EC2 Host: ${{ secrets.EC2_HOST }}"
 
-      - name: Add SSH Host to Known Hosts
+      - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
+          ls -lah ~/.ssh  # Check if keys exist
+          cat ~/.ssh/known_hosts  # Debugging step
 
-      - name: Setup Environment Variables
+      - name: Debug - Test SSH Connection
         run: |
-          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'SSH Connection Successful'"
 
       - name: Deploy to Production
         uses: appleboy/ssh-action@master
@@ -42,7 +45,7 @@ jobs:
             echo "Starting deployment..."
             cd iris-rag-backend/AUB-RAG-BE
             git pull
-            git checkout deployment-iris-rag-be  # Ensure the correct branch  
+            git checkout deployment-iris-rag-be  # Ensure correct branch  
             sudo docker-compose down
             sudo docker rmi $(docker images -q aub-rag-be-web) || true
             sudo docker-compose up --build -d
