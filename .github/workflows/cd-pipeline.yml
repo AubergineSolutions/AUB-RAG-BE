@@ -32,7 +32,6 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
             echo "Starting deployment..."
             cd iris-rag-backend/AUB-RAG-BE
             git pull
