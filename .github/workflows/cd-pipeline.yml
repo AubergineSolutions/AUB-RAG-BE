@@ -1,34 +1,43 @@
-name: CI/CD Pipeline to Deploy on EC2
+name: RAG Backend CI/CD Pipeline
 
 on:
   push:
     branches:
-      - deployment-iris-rag-be # Trigger deployment when code is pushed to the main branch
+      - deployment-iris-rag-be
+permissions: write-all
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    
-    # Checkout the code from the GitHub repository
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: rag-iris-meet-be
 
-    # Set up SSH client
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.5.3
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-    # Run deployment commands
-    - name: Deploy to EC2 instance
-      run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@54.68.230.234 << 'EOF'
-          cd /home/ubuntu/iris-rag-backend/AUB-RAG-BE
-          git pull
-          git checkout deployment-iris-rag-be
-          sudo docker-compose down
-          sudo docker rmi $(docker images -q aub-rag-be-web) || true
-          sudo docker-compose up --build -d
-          echo "Deployment complete."
-        EOF
+      - name: Setup environment variables
+        run: |
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+
+
+      - name: Deploy to Production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            echo "Starting deployment..."
+            cd iris-rag-backend/AUB-RAG-BE
+            git pull
+            git checkout deployment-iris-rag-be  # Ensure the correct branch  
+            docker-compose down
+            docker rmi $(docker images -q aub-rag-be-web) || true
+            docker-compose up --build -d
+            echo "Deployment complete."
