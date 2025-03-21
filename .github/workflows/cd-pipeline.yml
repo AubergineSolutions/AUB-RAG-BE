@@ -1,57 +1,34 @@
-name: RAG Backend CI/CD Pipeline
+name: CI/CD Pipeline to Deploy on EC2
 
 on:
   push:
     branches:
-      - deployment-iris-rag-be
-
-permissions: write-all
+      - deployment-iris-rag-be # Trigger deployment when code is pushed to the main branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: deployment-iris-rag-be
+    
+    # Checkout the code from the GitHub repository
+    - name: Checkout code
+      uses: actions/checkout@v2
 
-      - name: Debug - Print EC2 Host
-        run: |
-          echo "EC2 Host: ${{ secrets.EC2_HOST }}"
+    # Set up SSH client
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Setup SSH Key
-        run: |
-         mkdir -p $HOME/.ssh
-         echo "${{ secrets.SSH_PRIVATE_KEY }}" > $HOME/.ssh/id_rsa
-         chmod 600 $HOME/.ssh/id_rsa
-         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> $HOME/.ssh/known_hosts
-         chmod 644 $HOME/.ssh/known_hosts
-         ls -lah $HOME/.ssh  # Debugging step
-         cat $HOME/.ssh/known_hosts  # Debugging step
-        env:
-         HOME: $HOME  # Ensures the runner uses the correct home directory
-
-
-
-      - name: Debug - Test SSH Connection
-        run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'SSH Connection Successful'"
-
-      - name: Deploy to Production
-        uses: appleboy/ssh-action@master
-        with:
-         host: ${{ secrets.EC2_HOST }}
-         username: ${{ secrets.EC2_USER }}
-         key: /home/ubuntu/.ssh/id_rsa
-         script: |
-          set -e
-          echo "Starting deployment..."
-          cd iris-rag-backend/AUB-RAG-BE
+    # Run deployment commands
+    - name: Deploy to EC2 instance
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@54.68.230.234 << 'EOF'
+          cd /home/ubuntu/iris-rag-backend/AUB-RAG-BE
           git pull
           git checkout deployment-iris-rag-be
           sudo docker-compose down
           sudo docker rmi $(docker images -q aub-rag-be-web) || true
           sudo docker-compose up --build -d
           echo "Deployment complete."
-
+        EOF
